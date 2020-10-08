@@ -332,6 +332,18 @@ int thread_get_priority(void)
     return thread_current()->priority;
 }
 
+/* Compare two threads, and return true 
+    if previous thread's priority is less*/
+bool less_priority(struct list_elem *elem1, struct list_elem *elem2
+                    , void *aux)
+{
+    if (list_entry(elem1, struct thread, elem)->priority
+        < list_entry(elem2, struct thread, elem)->priority)
+        return true;
+    return false;
+}
+
+
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
 {
