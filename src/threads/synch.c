@@ -66,7 +66,7 @@ void sema_down(struct semaphore *sema)
     old_level = intr_disable();
     while (sema->value == 0)
     {
-        list_push_back(&sema->waiters, &thread_current()->elem);
+        list_insert_ordered(&ready_list, &t->elem, less_priority, 0);
         thread_block();
     }
     sema->value--;
@@ -236,7 +236,7 @@ bool lock_held_by_current_thread(const struct lock *lock)
     return lock->holder == thread_current();
 }
 
-/* One semaphore in a list. */
+/* One semaphore in a list. */  
 struct semaphore_elem
 {
     struct list_elem elem;      /* List element. */
