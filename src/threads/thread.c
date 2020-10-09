@@ -196,6 +196,13 @@ tid_t thread_create(const char *name, int priority,
     /* Add to run queue. */
     thread_unblock(t);
 
+    /* choose the higher priority thread 
+        among new thread and current thread */
+    if (t->priority > thread_current()->priority)
+    {
+        thread_yield();
+    }
+
     return tid;
 }
 
