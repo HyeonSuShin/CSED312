@@ -30,7 +30,6 @@ void lock_acquire(struct lock *);
 void donate_priority(struct lock *);
 bool lock_try_acquire(struct lock *);
 void lock_release(struct lock *);
-void remove_donation_list(struct lock *);
 void reset_priority(struct lock* lock);
 bool lock_held_by_current_thread(const struct lock *);
 
