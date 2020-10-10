@@ -239,9 +239,8 @@ void lock_release(struct lock *lock)
 
     if (!list_empty(&lock->holder->donation_list))
     {
-        //reset_priority();
+        reset_priority(lock);
     }
-    
     lock->holder = NULL;
     sema_up(&lock->semaphore);
 }
@@ -260,6 +259,17 @@ void remove_donation_list(struct lock *lock)
         if (thrd->waiting_lock == lock)
             list_remove(e);
     }
+}
+
+void reset_priority(struct lock* lock)
+{
+    struct list_elem *max_priority_thread_elem;
+    struct thread *max_priority_thread;
+    
+    max_priority_thread_elem = list_max(&lock->holder->donation_list, less_priority, 0);
+    max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
+    list_remove(max_priority_thread_elem);
+    lock->holder->priority = max_priority_thread->priority;
 }
 
 /* Returns true if the current thread holds LOCK, false
