@@ -241,6 +241,12 @@ void lock_release(struct lock *lock)
     sema_up(&lock->semaphore);
 }
 
+void remove_donation_list(struct lock *lock)
+{
+    if (!list_empty(&lock->holder->donation_list))
+        list_pop_front(&lock->holder->donation_list);
+}
+
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */
