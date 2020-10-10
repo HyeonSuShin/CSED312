@@ -237,6 +237,11 @@ void lock_release(struct lock *lock)
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
+    if (!list_empty(&lock->holder->donation_list))
+    {
+        //reset_priority();
+    }
+    
     lock->holder = NULL;
     sema_up(&lock->semaphore);
 }
