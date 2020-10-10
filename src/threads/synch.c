@@ -189,8 +189,22 @@ void lock_acquire(struct lock *lock)
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
+    if (lock->holder)
+    {
+        donate_priority(lock);
+    }
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
+}
+
+void donate_priority(struct lock *lock)
+{
+    struct thread *cur = thread_current();
+
+    cur->waiting_lock = lock;
+
+    lock->holder->priority = cur->priority;
+    list_push_back(&lock->holder->donation_list, &cur->donation);    
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
