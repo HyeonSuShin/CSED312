@@ -241,6 +241,13 @@ tid_t thread_create(const char *name, int priority,
     /* Add to run queue. */
     thread_unblock(t);
 
+    /* choose the higher priority thread 
+        among new thread and current thread */
+    if (t->priority > thread_current()->priority)
+    {
+        thread_yield();
+    }
+
     return tid;
 }
 
@@ -275,7 +282,7 @@ void thread_unblock(struct thread *t)
 
     old_level = intr_disable();
     ASSERT(t->status == THREAD_BLOCKED);
-    list_push_back(&ready_list, &t->elem);
+    list_insert_ordered(&ready_list, &t->elem, less_priority, 0);
     t->status = THREAD_READY;
     intr_set_level(old_level);
 }
@@ -343,7 +350,7 @@ void thread_yield(void)
 
     old_level = intr_disable();
     if (cur != idle_thread)
-        list_push_back(&ready_list, &cur->elem);
+            list_insert_ordered(&ready_list, &cur->elem, less_priority, 0);
     cur->status = THREAD_READY;
     schedule();
     intr_set_level(old_level);
@@ -376,6 +383,18 @@ int thread_get_priority(void)
 {
     return thread_current()->priority;
 }
+
+/* Compare two threads, and return true 
+    if previous thread's priority is less*/
+bool less_priority(struct list_elem *elem1, struct list_elem *elem2
+                    , void *aux)
+{
+    if (list_entry(elem1, struct thread, elem)->priority
+        < list_entry(elem2, struct thread, elem)->priority)
+        return true;
+    return false;
+}
+
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
@@ -494,6 +513,9 @@ init_thread(struct thread *t, const char *name, int priority)
     strlcpy(t->name, name, sizeof t->name);
     t->stack = (uint8_t *)t + PGSIZE;
     t->priority = priority;
+    t->origin_priority = priority;
+    t->waiting_lock = NULL;
+    list_init(&(t->donation_list));
     t->magic = THREAD_MAGIC;
 
     old_level = intr_disable();

@@ -66,7 +66,7 @@ void sema_down(struct semaphore *sema)
     old_level = intr_disable();
     while (sema->value == 0)
     {
-        list_push_back(&sema->waiters, &thread_current()->elem);
+        list_insert_ordered(&sema->waiters, &thread_current()->elem, less_priority, 0);
         thread_block();
     }
     sema->value--;
@@ -185,12 +185,27 @@ void lock_init(struct lock *lock)
    we need to sleep. */
 void lock_acquire(struct lock *lock)
 {
+    struct thread *cur = thread_current();
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
+    if (lock->holder && cur->priority > lock->holder->priority)
+    {
+        donate_priority(lock);
+    }
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
+}
+
+void donate_priority(struct lock *lock)
+{
+    struct thread *cur = thread_current();
+
+    cur->waiting_lock = lock;
+
+    lock->holder->priority = cur->priority;
+    list_push_back(&lock->holder->donation_list, &cur->donation);    
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -222,8 +237,30 @@ void lock_release(struct lock *lock)
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
+    reset_priority(lock);
     lock->holder = NULL;
     sema_up(&lock->semaphore);
+}
+
+
+void reset_priority(struct lock* lock)
+{
+    struct list_elem *max_priority_thread_elem;
+    struct thread *max_priority_thread;
+    struct thread *holder = lock->holder;
+    
+    if (!list_empty(&holder->donation_list))
+    {
+        max_priority_thread_elem = list_max(&holder->donation_list, less_priority, 0);
+        max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
+        list_remove(max_priority_thread_elem);
+        holder->priority = max_priority_thread->priority;
+    }
+    else
+    {
+        holder->priority = holder->origin_priority;
+    }
+
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -236,7 +273,7 @@ bool lock_held_by_current_thread(const struct lock *lock)
     return lock->holder == thread_current();
 }
 
-/* One semaphore in a list. */
+/* One semaphore in a list. */  
 struct semaphore_elem
 {
     struct list_elem elem;      /* List element. */
