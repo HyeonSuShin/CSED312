@@ -89,6 +89,7 @@ struct thread
     uint8_t *stack;            /* Saved stack pointer. */
     int priority;              /* Priority. */
     struct list_elem allelem;  /* List element for all threads list. */
+    int64_t wakeup_tick; // 수정
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
@@ -102,10 +103,20 @@ struct thread
     unsigned magic; /* Detects stack overflow. */
 };
 
+struct sleeping_thread{
+    struct thread *sleep_thread;
+    int64_t wake_up_ticks; // thread가 일어날 ticks를 저장한다.
+    struct list_elem elem;
+};
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+bool SLEEPING_LESS_FUNC(const struct list_elem *prev, const struct list_elem *next, void *aux);
+void thread_sleep(int64_t ticks);
+void thread_awake(int64_t current_ticks);
 
 void thread_init(void);
 void thread_start(void);

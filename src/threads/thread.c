@@ -20,6 +20,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+static struct list sleeping_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -71,6 +73,7 @@ static void schedule(void);
 void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
 
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -91,6 +94,7 @@ void thread_init(void)
     lock_init(&tid_lock);
     list_init(&ready_list);
     list_init(&all_list);
+    list_init(&sleeping_list); //sleeping list도 초기화 해준다.
 
     /* Set up a thread structure for the running thread. */
     initial_thread = running_thread();
@@ -134,6 +138,47 @@ void thread_tick(void)
     /* Enforce preemption. */
     if (++thread_ticks >= TIME_SLICE)
         intr_yield_on_return();
+}
+
+bool SLEEPING_LESS_FUNC(const struct list_elem *prev, const struct list_elem *next, void *aux){
+    const struct sleeping_thread *_prev = list_entry(prev, struct sleeping_thread, elem);
+    const struct sleeping_thread *_next = list_entry(next, struct sleeping_thread, elem);
+
+    return _prev->wake_up_ticks < _next->wake_up_ticks;
+}
+
+void thread_sleep(int64_t ticks){
+    enum intr_level old_level;
+    old_level = intr_disable();
+    struct sleeping_thread *sleepingThread = palloc_get_page(PAL_ZERO);
+    ASSERT(sleepingThread != NULL);
+    struct thread *current_thread = thread_current();
+    ASSERT(current_thread != idle_thread);
+    
+    sleepingThread->wake_up_ticks = ticks;
+    sleepingThread->sleep_thread = current_thread;
+
+    list_insert_ordered(&sleeping_list, &sleepingThread->elem, SLEEPING_LESS_FUNC, NULL);
+    thread_block();
+
+    intr_set_level(old_level);
+}
+
+void thread_awake(int64_t current_ticks){
+    if(!list_empty(&sleeping_list)){
+        for(struct list_elem *e = list_begin(&sleeping_list);e != list_end(&sleeping_list);){
+            struct sleeping_thread *sleepingThread = list_entry(e, struct sleeping_thread, elem);
+
+            if(sleepingThread->wake_up_ticks <= current_ticks){
+                struct thread *thread = sleepingThread->sleep_thread;
+                e = list_remove(e);
+                palloc_free_page(sleepingThread);
+                thread_unblock(thread);
+            } else{
+                break;
+            }
+        }
+    }
 }
 
 /* Prints thread statistics. */
