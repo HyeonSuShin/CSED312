@@ -245,21 +245,6 @@ void lock_release(struct lock *lock)
     sema_up(&lock->semaphore);
 }
 
-void remove_donation_list(struct lock *lock)
-{
-    struct list_elem *e;
-    struct list *list = &(lock->holder->donation_list);
-    struct thread *thrd;
-    
-    for (e = list_begin(list);
-        e != list_end(list);
-        e = list_next(e))
-    {
-        thrd = list_entry(e, struct thread, elem);
-        if (thrd->waiting_lock == lock)
-            list_remove(e);
-    }
-}
 
 void reset_priority(struct lock* lock)
 {
