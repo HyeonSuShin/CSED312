@@ -243,8 +243,18 @@ void lock_release(struct lock *lock)
 
 void remove_donation_list(struct lock *lock)
 {
-    if (!list_empty(&lock->holder->donation_list))
-        list_pop_front(&lock->holder->donation_list);
+    struct list_elem *e;
+    struct list *list = &(lock->holder->donation_list);
+    struct thread *thrd;
+    
+    for (e = list_begin(list);
+        e != list_end(list);
+        e = list_next(e))
+    {
+        thrd = list_entry(e, struct thread, elem);
+        if (thrd->waiting_lock == lock)
+            list_remove(e);
+    }
 }
 
 /* Returns true if the current thread holds LOCK, false
