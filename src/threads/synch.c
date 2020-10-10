@@ -185,11 +185,12 @@ void lock_init(struct lock *lock)
    we need to sleep. */
 void lock_acquire(struct lock *lock)
 {
+    struct thread *cur = thread_current();
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
-    if (lock->holder)
+    if (lock->holder && cur->priority > lock->holder->priority)
     {
         donate_priority(lock);
     }
