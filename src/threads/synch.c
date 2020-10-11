@@ -194,12 +194,15 @@ void lock_acquire(struct lock *lock)
     ASSERT(!lock_held_by_current_thread(lock));
 
     old_level = intr_disable();
-    if (lock->holder && cur->priority > lock->holder->priority)
+    if (lock->holder)
     {
         donate_priority(lock);
+        cur->waiting_lock = lock;
+        list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
     }
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
+    thread_current()->waiting_lock = NULL;
 
     intr_set_level(old_level);
 }
@@ -208,10 +211,13 @@ void donate_priority(struct lock *lock)
 {
     struct thread *cur = thread_current();
 
-    cur->waiting_lock = lock;
+    if (lock->holder->priority < cur->priority)
+        lock->holder->priority = cur->priority;
 
-    lock->holder->priority = cur->priority;
-    //list_insert_ordered(&lock->holder->donation_list, &cur->donation);
+    //cur->waiting_lock = lock;
+
+    
+    //list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
