@@ -350,7 +350,7 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
                     , void *aux)
 {
     if (list_entry(elem1, struct thread, elem)->priority
-        < list_entry(elem2, struct thread, elem)->priority)
+        > list_entry(elem2, struct thread, elem)->priority)
         return true;
     return false;
 }
