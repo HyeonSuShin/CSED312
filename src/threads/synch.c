@@ -211,7 +211,7 @@ void donate_priority(struct lock *lock)
     cur->waiting_lock = lock;
 
     lock->holder->priority = cur->priority;
-    list_insert_ordered(&lock->holder->donation_list, &cur->donation);
+    //list_insert_ordered(&lock->holder->donation_list, &cur->donation);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
