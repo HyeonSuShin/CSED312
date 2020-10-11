@@ -311,6 +311,24 @@ void thread_yield(void)
     intr_set_level(old_level);
 }
 
+
+void test_yield(void)
+{
+    struct thread *cur = thread_current();
+
+    if (list_empty(&ready_list))
+    {
+        return;
+    }
+    struct list_elem *front = list_front(&ready_list);
+    struct thread *thrd = list_entry(front, struct thread, elem);
+    if (cur->priority < thrd->priority)
+    {
+        thread_yield();
+    }
+
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void thread_foreach(thread_action_func *func, void *aux)
