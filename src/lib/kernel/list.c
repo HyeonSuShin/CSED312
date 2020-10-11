@@ -214,21 +214,6 @@ void list_push_back(struct list *list, struct list_elem *elem)
     list_insert(list_end(list), elem);
 }
 
-
-/* Inserts ELEM just before BEFORE, which may be either an
-   interior element or a tail.  The latter case is equivalent to
-   list_push_back(). */
-void list_insert(struct list_elem *before, struct list_elem *elem)
-{
-    ASSERT(is_interior(before) || is_tail(before));
-    ASSERT(elem != NULL);
-
-    elem->prev = before->prev;
-    elem->next = before;
-    before->prev->next = elem;
-    before->prev = elem;
-}
-
 /* Removes ELEM from its list and returns the element that
    followed it.  Undefined behavior if ELEM is not in a list.
 
