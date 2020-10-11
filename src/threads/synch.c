@@ -249,9 +249,28 @@ void lock_release(struct lock *lock)
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
+    remove_lock(lock);
     reset_priority(lock);
     lock->holder = NULL;
     sema_up(&lock->semaphore);
+}
+
+
+void remove_lock(struct lock* lock)
+{
+    struct list_elem *e;
+    struct list *list = &thread_current()->donation_list;
+
+    for (e = list_begin(list);
+         e != list_end(list);
+         e = list_next(e))
+    {
+        struct thread *thrd = list_entry(e, struct thread, donation);
+        if (lock == thrd->waiting_lock)
+        {
+            list_remove(e);
+        }
+    }
 }
 
 
