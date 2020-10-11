@@ -116,7 +116,7 @@ list_prev(struct list_elem *elem)
 }
 
 /* Returns LIST's head.
-
+Fli
    list_rend() is often used in iterating through a list in
    reverse order, from back to front.  Here's typical usage,
    following the example from the top of list.h:
@@ -212,6 +212,21 @@ void list_push_front(struct list *list, struct list_elem *elem)
 void list_push_back(struct list *list, struct list_elem *elem)
 {
     list_insert(list_end(list), elem);
+}
+
+
+/* Inserts ELEM just before BEFORE, which may be either an
+   interior element or a tail.  The latter case is equivalent to
+   list_push_back(). */
+void list_insert(struct list_elem *before, struct list_elem *elem)
+{
+    ASSERT(is_interior(before) || is_tail(before));
+    ASSERT(elem != NULL);
+
+    elem->prev = before->prev;
+    elem->next = before;
+    before->prev->next = elem;
+    before->prev = elem;
 }
 
 /* Removes ELEM from its list and returns the element that
