@@ -356,6 +356,24 @@ void thread_yield(void)
     intr_set_level(old_level);
 }
 
+
+void test_yield(void)
+{
+    struct thread *cur = thread_current();
+
+    if (list_empty(&ready_list))
+    {
+        return;
+    }
+    struct list_elem *front = list_front(&ready_list);
+    struct thread *thrd = list_entry(front, struct thread, elem);
+    if (cur->priority < thrd->priority)
+    {
+        thread_yield();
+    }
+
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void thread_foreach(thread_action_func *func, void *aux)
@@ -376,6 +394,11 @@ void thread_foreach(thread_action_func *func, void *aux)
 void thread_set_priority(int new_priority)
 {
     thread_current()->priority = new_priority;
+
+    struct list_elem *highest_in_readylist = list_begin(&ready_list);
+    struct thread *thrd = list_entry(highest_in_readylist, struct thread, elem);
+    if (new_priority < thrd->priority)
+        thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -390,7 +413,7 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
                     , void *aux)
 {
     if (list_entry(elem1, struct thread, elem)->priority
-        < list_entry(elem2, struct thread, elem)->priority)
+        > list_entry(elem2, struct thread, elem)->priority)
         return true;
     return false;
 }
