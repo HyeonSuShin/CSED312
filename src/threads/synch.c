@@ -269,7 +269,9 @@ void remove_lock(struct lock* lock)
         struct thread *thrd = list_entry(e, struct thread, donation);
         if (lock == thrd->waiting_lock)
         {
+            struct list_elem *tmp = list_prev(e);
             list_remove(e);
+            e = tmp;
         }
     }
 }
@@ -292,7 +294,6 @@ void reset_priority(struct lock* lock)
     else
     {
         holder->priority = holder->origin_priority;
-        //printf("%s: %d <- %d\n", holder->name, holder->priority, holder->origin_priority);
     }
 
 }
