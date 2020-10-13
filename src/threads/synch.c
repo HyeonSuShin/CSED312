@@ -218,10 +218,7 @@ void donate_priority(struct lock *lock)
     if (lock->holder->priority < cur->priority)
         lock->holder->priority = cur->priority;
 
-    //cur->waiting_lock = lock;
-
-    
-    //list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
+    check_donated(lock->holder);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -283,7 +280,8 @@ void reset_priority(struct lock* lock)
     struct list_elem *max_priority_thread_elem;
     struct thread *max_priority_thread;
     struct thread *holder = lock->holder;
-    
+    if (list_empty(&thread_current()->donation_list))
+        return;
     if (!list_empty(&holder->donation_list))
     {
         max_priority_thread_elem = list_max(&holder->donation_list, less_priority, 0);
@@ -294,6 +292,7 @@ void reset_priority(struct lock* lock)
     else
     {
         holder->priority = holder->origin_priority;
+        //printf("%s: %d <- %d\n", holder->name, holder->priority, holder->origin_priority);
     }
 
 }

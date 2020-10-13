@@ -393,7 +393,9 @@ void thread_foreach(thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
+    //printf("thread_set_priority function\n");
     thread_current()->priority = new_priority;
+    thread_current()->origin_priority = new_priority;
 
     struct list_elem *highest_in_readylist = list_begin(&ready_list);
     struct thread *thrd = list_entry(highest_in_readylist, struct thread, elem);
@@ -416,6 +418,19 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
         > list_entry(elem2, struct thread, elem)->priority)
         return true;
     return false;
+}
+
+
+void check_donated(struct thread *thrd)
+{
+    struct lock *lock = thrd->waiting_lock;
+    if (!lock)
+    {
+        return;
+    }
+    struct thread *holder = lock->holder;
+    holder->priority = thrd->priority;
+    check_donated(holder);
 }
 
 
