@@ -217,6 +217,9 @@ void lock_acquire(struct lock *lock)
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
     thread_current()->waiting_lock = NULL;
+    list_remove(&lock->holder->donation);
+
+    //printf("holder : %s\n", lock->holder->name);
 
     intr_set_level(old_level);
 }
@@ -298,23 +301,25 @@ void reset_priority(struct lock* lock)
     struct list_elem *max_priority_thread_elem;
     struct thread *max_priority_thread;
     struct thread *holder = lock->holder;
-
-    if (!list_empty(&holder->donation_list))
+    
+    list_sort(&holder->donation_list, less_priority, 0);
+    while (!list_empty(&holder->donation_list))
     {
         //printf("\nreset_priority not empty list\n");
         //printf("%d donations!\n", list_size(&holder->donation_list));
-        list_sort(&holder->donation_list, less_priority, 0);
         max_priority_thread_elem = list_front(&holder->donation_list);
         max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
         holder->priority = max_priority_thread->priority;
-
+        if (max_priority_thread->waiting_lock != lock)
+            return;
+        list_remove(max_priority_thread_elem);
+        
         //if (holder->origin_priority > max_priority_thread->priority)
             //holder->priority = holder->origin_priority;
     }
-    else
-    {
-        holder->priority = holder->origin_priority;
-    }
+
+    holder->priority = holder->origin_priority;
+
     //printf("after %d donations", list_size(&cur->donation_list));
 }
 
