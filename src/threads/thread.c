@@ -547,14 +547,19 @@ void mlfqs_recent_cpu (struct thread *t){
 }
 
 void mlfqs_load_avg (void){
-    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(list_size(&ready_list))));
+    int ready_threads = list_size(&ready_list);
+    if(thread_current() == idle_thread){
+        ready_threads--;
+    }
+    ready_threads++;
+    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(ready_threads)));
 }
 
 void mlfqs_increment (void){
     if(thread_current() == idle_thread){
         return;
     }
-    thread_current()->recent_cpu = FP_ADD(thread_current(), CONVERT_TO_FP(1));
+    thread_current()->recent_cpu = FP_ADD(thread_current()->recent_cpu, CONVERT_TO_FP(1));
 }
 
 void mlfqs_recalc (void){
