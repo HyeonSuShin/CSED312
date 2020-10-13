@@ -116,7 +116,7 @@ list_prev(struct list_elem *elem)
 }
 
 /* Returns LIST's head.
-
+Fli
    list_rend() is often used in iterating through a list in
    reverse order, from back to front.  Here's typical usage,
    following the example from the top of list.h:

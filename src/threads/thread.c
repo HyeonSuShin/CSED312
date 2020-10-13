@@ -242,6 +242,13 @@ tid_t thread_create(const char *name, int priority,
     /* Add to run queue. */
     thread_unblock(t);
 
+    /* choose the higher priority thread 
+        among new thread and current thread */
+    if (t->priority > thread_current()->priority)
+    {
+        thread_yield();
+    }
+
     return tid;
 }
 
@@ -276,7 +283,7 @@ void thread_unblock(struct thread *t)
 
     old_level = intr_disable();
     ASSERT(t->status == THREAD_BLOCKED);
-    list_push_back(&ready_list, &t->elem);
+    list_insert_ordered(&ready_list, &t->elem, less_priority, 0);
     t->status = THREAD_READY;
     intr_set_level(old_level);
 }
@@ -344,10 +351,28 @@ void thread_yield(void)
 
     old_level = intr_disable();
     if (cur != idle_thread)
-        list_push_back(&ready_list, &cur->elem);
+            list_insert_ordered(&ready_list, &cur->elem, less_priority, 0);
     cur->status = THREAD_READY;
     schedule();
     intr_set_level(old_level);
+}
+
+
+void test_yield(void)
+{
+    struct thread *cur = thread_current();
+
+    if (list_empty(&ready_list))
+    {
+        return;
+    }
+    struct list_elem *front = list_front(&ready_list);
+    struct thread *thrd = list_entry(front, struct thread, elem);
+    if (cur->priority < thrd->priority)
+    {
+        thread_yield();
+    }
+
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -369,7 +394,14 @@ void thread_foreach(thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
+    //printf("thread_set_priority function\n");
     thread_current()->priority = new_priority;
+    thread_current()->origin_priority = new_priority;
+
+    struct list_elem *highest_in_readylist = list_begin(&ready_list);
+    struct thread *thrd = list_entry(highest_in_readylist, struct thread, elem);
+    if (new_priority < thrd->priority)
+        thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -377,6 +409,78 @@ int thread_get_priority(void)
 {
     return thread_current()->priority;
 }
+
+/* Compare two threads, and return true 
+    if previous thread's priority is less*/
+bool less_priority(struct list_elem *elem1, struct list_elem *elem2
+                    , void *aux)
+{
+    if (list_entry(elem1, struct thread, elem)->priority
+        > list_entry(elem2, struct thread, elem)->priority)
+        return true;
+    return false;
+}
+
+void test_donate_priority(struct thread *thrd, struct lock *lock)
+{
+    struct thread *holder = lock->holder;
+    //printf("call\n");
+
+    //holder is null
+    if (!lock)
+        return;
+
+    //no donation
+    if (holder->priority >= thrd->priority)
+    {
+        wait_lock(thrd, lock);
+        //printf("no donation\n");
+        return;
+    }
+
+
+    //donation
+    holder->priority = thrd->priority;
+    wait_lock(thrd, lock);
+    //printf("donation\n");
+
+    //recursion part
+    test_donate_priority(holder, holder->waiting_lock);
+}
+
+void wait_lock(struct thread *thrd, struct lock *lock)
+{
+    thrd->waiting_lock = lock;
+    list_insert_ordered(&lock->holder->donation_list, &thrd->donation, less_priority, 0);
+}
+
+void check_donated(struct thread *thrd)
+{
+    //printf("check_donated\n");
+    struct lock *lock = thrd->waiting_lock;
+    if (!lock)
+    {
+        return;
+    }
+    struct thread *holder = lock->holder;
+    holder->priority = thrd->priority;
+        //printf("%s(): ", holder->name);
+
+    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
+    list_insert_ordered(&holder->donation_list, &thrd->donation, less_priority, 0);
+    //printf("insert %s to %s\n", list_entry(&thrd->donation, struct thread, donation)->name, holder->name);
+    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
+    //printf("(%s~%s\n", list_entry(list_front(&holder->donation_list), struct thread, donation)->name,
+                    //list_entry(list_back(&holder->donation_list), struct thread, donation));
+    //for (struct list_elem *e = list_begin(&holder->donation_list);
+       // e != list_end(&holder->donation_list);
+       // e = list_next(e))
+        //printf("%s - ", list_entry(e, struct thread, donation)->name);
+     //   ;
+    //printf("end\n");
+    check_donated(holder);
+}
+
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
@@ -495,6 +599,9 @@ init_thread(struct thread *t, const char *name, int priority)
     strlcpy(t->name, name, sizeof t->name);
     t->stack = (uint8_t *)t + PGSIZE;
     t->priority = priority;
+    t->origin_priority = priority;
+    t->waiting_lock = NULL;
+    list_init(&(t->donation_list));
     t->magic = THREAD_MAGIC;
 
     old_level = intr_disable();
