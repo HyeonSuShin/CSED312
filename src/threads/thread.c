@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -19,6 +20,10 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
 
 static struct list sleeping_list;
 
@@ -60,6 +65,8 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+int load_avg;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -394,6 +401,9 @@ void thread_foreach(thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
+    if(thread_mlfqs){
+        return;
+    }
     //printf("thread_set_priority function\n");
     thread_current()->priority = new_priority;
     thread_current()->origin_priority = new_priority;
@@ -483,31 +493,79 @@ void check_donated(struct thread *thrd)
 
 
 /* Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED)
+void thread_set_nice(int nice)
 {
-    /* Not yet implemented. */
+    enum intr_level old_level;
+    old_level = intr_disable();
+    thread_current()->nice = nice;
+    intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void)
 {
-    /* Not yet implemented. */
-    return 0;
+    enum intr_level old_level;
+    old_level = intr_disable();
+    int ret = thread_current()->nice;
+    intr_set_level(old_level);
+    return ret;
 }
 
 /* Returns 100 times the system load average. */
 int thread_get_load_avg(void)
 {
-    /* Not yet implemented. */
-    return 0;
+    enum intr_level old_level;
+    old_level = intr_disable();
+    int ret = CONVERT_TO_INT_NEAR(FP_MUL(load_avg, CONVERT_TO_FP(100)));
+    intr_set_level(old_level);
+    return ret;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void)
 {
-    /* Not yet implemented. */
-    return 0;
+    enum intr_level old_level;
+    old_level = intr_disable();
+    int ret = CONVERT_TO_INT_NEAR(FP_MUL(thread_current()->recent_cpu, CONVERT_TO_FP(100)));
+    intr_set_level(old_level);
+    return ret;
 }
+
+void mlfqs_priority (struct thread *t){
+    if(t == idle_thread){
+        return;
+    }
+
+    t->priority = FP_SUB(FP_SUB(CONVERT_TO_FP(PRI_MAX), FP_DIV(t->recent_cpu, CONVERT_TO_FP(4))), FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2)));
+}
+
+void mlfqs_recent_cpu (struct thread *t){
+    if(t == idle_thread){
+        return;
+    }
+    t->recent_cpu = FP_ADD(FP_MUL(FP_DIV(FP_MUL(CONVERT_TO_FP(2), load_avg), FP_ADD(FP_MUL(CONVERT_TO_FP(2), load_avg), CONVERT_TO_FP(1))), t->recent_cpu), CONVERT_TO_FP(t->nice));
+}
+
+void mlfqs_load_avg (void){
+    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(list_size(&ready_list))));
+}
+
+void mlfqs_increment (void){
+    if(thread_current() == idle_thread){
+        return;
+    }
+    thread_current()->recent_cpu = FP_ADD(thread_current(), CONVERT_TO_FP(1));
+}
+
+void mlfqs_recalc (void){
+    mlfqs_load_avg();
+    for(struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+        struct thread *t = list_entry(e, struct thread, allelem);
+        mlfqs_recent_cpu(t);
+        mlfqs_priority(t);
+    }
+}
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -601,6 +659,8 @@ init_thread(struct thread *t, const char *name, int priority)
     t->priority = priority;
     t->origin_priority = priority;
     t->waiting_lock = NULL;
+    t->nice = NICE_DEFAULT;
+    t->recent_cpu =RECENT_CPU_DEFAULT;
     list_init(&(t->donation_list));
     t->magic = THREAD_MAGIC;
 
