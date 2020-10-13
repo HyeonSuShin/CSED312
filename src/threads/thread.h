@@ -142,6 +142,7 @@ const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void test_yield(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);
@@ -149,6 +150,10 @@ void thread_foreach(thread_action_func *, void *);
 
 int thread_get_priority(void);
 void thread_set_priority(int);
+bool less_priority(struct list_elem *, struct list_elem *, void *);
+void test_donate_priority(struct thread *, struct lock *);
+void wait_lock(struct thread *, struct lock *);
+void check_donated(struct thread *);
 
 int thread_get_nice(void);
 void thread_set_nice(int);
