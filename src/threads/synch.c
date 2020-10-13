@@ -66,7 +66,8 @@ void sema_down(struct semaphore *sema)
     old_level = intr_disable();
     while (sema->value == 0)
     {
-        list_push_back(&sema->waiters, &thread_current()->elem);
+        //donate?
+        list_insert_ordered(&sema->waiters, &thread_current()->elem, less_priority, 0);
         thread_block();
     }
     sema->value--;
@@ -110,9 +111,13 @@ void sema_up(struct semaphore *sema)
 
     old_level = intr_disable();
     if (!list_empty(&sema->waiters))
-        thread_unblock(list_entry(list_pop_front(&sema->waiters),
-                                  struct thread, elem));
+    {
+        list_sort(&sema->waiters, less_priority, 0);
+        thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
+    }
     sema->value++;
+    
+    test_yield();
     intr_set_level(old_level);
 }
 
@@ -185,12 +190,46 @@ void lock_init(struct lock *lock)
    we need to sleep. */
 void lock_acquire(struct lock *lock)
 {
+    enum intr_level old_level;
+
+    struct thread *cur = thread_current();
+
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
+    old_level = intr_disable();
+    if (lock_try_acquire(lock))
+    {   
+        intr_set_level(old_level);
+        return;
+    }
+
+    if (lock->holder)
+    {
+        //test_donate_priority(thread_current(), lock);
+        donate_priority(lock);
+        cur->waiting_lock = lock;
+        list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
+        //printf("%s get ", lock->holder->name);
+        //printf("%d donations\n", list_size(&lock->holder->donation_list));
+    }
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
+    thread_current()->waiting_lock = NULL;
+
+    intr_set_level(old_level);
+}
+
+void donate_priority(struct lock *lock)
+{
+    //printf("<donation>\n");
+    struct thread *cur = thread_current();
+
+    if (lock->holder->priority < cur->priority)
+        lock->holder->priority = cur->priority;
+
+    //check_donated(lock->holder);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -222,8 +261,61 @@ void lock_release(struct lock *lock)
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
+    enum intr_level old_level;
+    old_level = intr_disable();
+    
+    //printf("release ");
+
+    remove_lock(lock);
+    reset_priority(lock);
     lock->holder = NULL;
     sema_up(&lock->semaphore);
+
+    intr_set_level(old_level);
+}
+
+
+void remove_lock(struct lock* lock)
+{
+    struct list_elem *e;
+    struct list *list = &thread_current()->donation_list;
+
+    for (e = list_begin(list); e != list_end(list); )
+    {
+        struct thread *thrd = list_entry(e, struct thread, donation);
+        if (lock == thrd->waiting_lock)
+        {
+            e = list_remove(e);
+            break;
+        }
+        e = list_next(e);
+    }
+}
+
+
+void reset_priority(struct lock* lock)
+{
+    struct list_elem *max_priority_thread_elem;
+    struct thread *max_priority_thread;
+    struct thread *holder = lock->holder;
+
+    if (!list_empty(&holder->donation_list))
+    {
+        //printf("\nreset_priority not empty list\n");
+        //printf("%d donations!\n", list_size(&holder->donation_list));
+        list_sort(&holder->donation_list, less_priority, 0);
+        max_priority_thread_elem = list_front(&holder->donation_list);
+        max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
+        holder->priority = max_priority_thread->priority;
+
+        //if (holder->origin_priority > max_priority_thread->priority)
+            //holder->priority = holder->origin_priority;
+    }
+    else
+    {
+        holder->priority = holder->origin_priority;
+    }
+    //printf("after %d donations", list_size(&cur->donation_list));
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -236,7 +328,7 @@ bool lock_held_by_current_thread(const struct lock *lock)
     return lock->holder == thread_current();
 }
 
-/* One semaphore in a list. */
+/* One semaphore in a list. */  
 struct semaphore_elem
 {
     struct list_elem elem;      /* List element. */
