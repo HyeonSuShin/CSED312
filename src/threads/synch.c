@@ -222,7 +222,7 @@ void donate_priority(struct thread *thrd)
         reset_priority(thrd->waiting_lock->holder, &(thrd->waiting_lock->holder->priority));
         thrd = thrd->waiting_lock->holder;
     }
-    // printf("done : %s %d\n", cur->name, cur->priority);
+    
     intr_set_level(old_level);
 }
 
@@ -259,12 +259,16 @@ void lock_release(struct lock *lock)
     ASSERT(lock_held_by_current_thread(lock));
     thread_current()->priority = thread_current()->origin_priority;
 
-     printf("release done : %s %d, %s \n", lock->holder->name, lock->holder->priority, list_entry(list_begin(&lock->semaphore.waiters), struct thread, elem)->name);
 
     remove_lock(lock);
     lock->holder->priority = lock->holder->origin_priority;
     reset_priority(lock->holder, &(lock->holder->priority));
-    lock->holder = NULL;
+    if(!list_empty(&(lock->semaphore.waiters))){
+        if(lock->holder != list_entry(list_front(&lock->semaphore.waiters), struct thread, elem))
+            lock->holder = list_entry(list_front(&lock->semaphore.waiters), struct thread, elem);
+    } else{
+        lock->holder = NULL;
+    }
     sema_up(&lock->semaphore);
 
 
@@ -283,12 +287,10 @@ void remove_lock(struct lock* lock)
         if (lock == thrd->waiting_lock)
         {
             e = list_remove(e);
-            break;
+            continue;
         }
         e = list_next(e);
     }
-
-    // printf("list_size %d\n", list_size(list));
 }
 
 
