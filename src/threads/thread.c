@@ -375,9 +375,42 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
     return false;
 }
 
+void test_donate_priority(struct thread *thrd, struct lock *lock)
+{
+    struct thread *holder = lock->holder;
+    //printf("call\n");
+
+    //holder is null
+    if (!lock)
+        return;
+
+    //no donation
+    if (holder->priority >= thrd->priority)
+    {
+        wait_lock(thrd, lock);
+        //printf("no donation\n");
+        return;
+    }
+
+
+    //donation
+    holder->priority = thrd->priority;
+    wait_lock(thrd, lock);
+    //printf("donation\n");
+
+    //recursion part
+    test_donate_priority(holder, holder->waiting_lock);
+}
+
+void wait_lock(struct thread *thrd, struct lock *lock)
+{
+    thrd->waiting_lock = lock;
+    list_insert_ordered(&lock->holder->donation_list, &thrd->donation, less_priority, 0);
+}
 
 void check_donated(struct thread *thrd)
 {
+    //printf("check_donated\n");
     struct lock *lock = thrd->waiting_lock;
     if (!lock)
     {
@@ -385,6 +418,20 @@ void check_donated(struct thread *thrd)
     }
     struct thread *holder = lock->holder;
     holder->priority = thrd->priority;
+        //printf("%s(): ", holder->name);
+
+    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
+    list_insert_ordered(&holder->donation_list, &thrd->donation, less_priority, 0);
+    //printf("insert %s to %s\n", list_entry(&thrd->donation, struct thread, donation)->name, holder->name);
+    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
+    //printf("(%s~%s\n", list_entry(list_front(&holder->donation_list), struct thread, donation)->name,
+                    //list_entry(list_back(&holder->donation_list), struct thread, donation));
+    //for (struct list_elem *e = list_begin(&holder->donation_list);
+       // e != list_end(&holder->donation_list);
+       // e = list_next(e))
+        //printf("%s - ", list_entry(e, struct thread, donation)->name);
+     //   ;
+    //printf("end\n");
     check_donated(holder);
 }
 

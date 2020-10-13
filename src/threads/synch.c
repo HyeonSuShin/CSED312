@@ -66,6 +66,7 @@ void sema_down(struct semaphore *sema)
     old_level = intr_disable();
     while (sema->value == 0)
     {
+        //donate?
         list_insert_ordered(&sema->waiters, &thread_current()->elem, less_priority, 0);
         thread_block();
     }
@@ -115,9 +116,9 @@ void sema_up(struct semaphore *sema)
         thread_unblock(list_entry(list_pop_front(&sema->waiters), struct thread, elem));
     }
     sema->value++;
-    intr_set_level(old_level);
-
+    
     test_yield();
+    intr_set_level(old_level);
 }
 
 static void sema_test_helper(void *sema_);
@@ -198,8 +199,15 @@ void lock_acquire(struct lock *lock)
     ASSERT(!lock_held_by_current_thread(lock));
 
     old_level = intr_disable();
+    //if (lock_try_acquire(lock))
+    //{   
+      //  intr_set_level(old_level);
+        //return;
+    //}
+
     if (lock->holder)
     {
+        //test_donate_priority(thread_current(), lock);
         donate_priority(lock);
         cur->waiting_lock = lock;
         list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
@@ -213,12 +221,13 @@ void lock_acquire(struct lock *lock)
 
 void donate_priority(struct lock *lock)
 {
+    //printf("<donation>\n");
     struct thread *cur = thread_current();
 
     if (lock->holder->priority < cur->priority)
         lock->holder->priority = cur->priority;
 
-    check_donated(lock->holder);
+    //check_donated(lock->holder);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -282,10 +291,14 @@ void reset_priority(struct lock* lock)
     struct list_elem *max_priority_thread_elem;
     struct thread *max_priority_thread;
     struct thread *holder = lock->holder;
-    if (list_empty(&thread_current()->donation_list))
-        return;
+    //printf("cur: %s\n", thread_current()->name);
+    //if (list_empty(&thread_current()->donation_list))
+      //  return;
+    //printf("holder(%d): %s\n", list_size(&lock->holder->donation_list), lock->holder->name);
+    //printf("%s.\n", list_entry(list_front(&lock->holder->donation_list), struct thread, donation)->name);
     if (!list_empty(&holder->donation_list))
     {
+        //printf("reset_priority not empty list\n");
         max_priority_thread_elem = list_max(&holder->donation_list, less_priority, 0);
         max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
         list_remove(max_priority_thread_elem);
