@@ -412,7 +412,9 @@ void thread_set_priority(int new_priority)
     struct list_elem *highest_in_readylist = list_begin(&ready_list);
     struct thread *thrd = list_entry(highest_in_readylist, struct thread, elem);
     reset_priority(thread_current(), &thread_current()->priority);
-    donate_priority(thread_current());
+    if(!thread_mlfqs){
+        donate_priority(thread_current());
+    }
     if (new_priority < thrd->priority)
         thread_yield();
 }
@@ -432,66 +434,6 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
         > list_entry(elem2, struct thread, elem)->priority)
         return true;
     return false;
-}
-
-void test_donate_priority(struct thread *thrd, struct lock *lock)
-{
-    struct thread *holder = lock->holder;
-    //printf("call\n");
-
-    //holder is null
-    if (!lock)
-        return;
-
-    //no donation
-    if (holder->priority >= thrd->priority)
-    {
-        wait_lock(thrd, lock);
-        //printf("no donation\n");
-        return;
-    }
-
-
-    //donation
-    holder->priority = thrd->priority;
-    wait_lock(thrd, lock);
-    //printf("donation\n");
-
-    //recursion part
-    test_donate_priority(holder, holder->waiting_lock);
-}
-
-void wait_lock(struct thread *thrd, struct lock *lock)
-{
-    thrd->waiting_lock = lock;
-    list_insert_ordered(&lock->holder->donation_list, &thrd->donation, less_priority, 0);
-}
-
-void check_donated(struct thread *thrd)
-{
-    //printf("check_donated\n");
-    struct lock *lock = thrd->waiting_lock;
-    if (!lock)
-    {
-        return;
-    }
-    struct thread *holder = lock->holder;
-    holder->priority = thrd->priority;
-        //printf("%s(): ", holder->name);
-
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    list_insert_ordered(&holder->donation_list, &thrd->donation, less_priority, 0);
-    //printf("insert %s to %s\n", list_entry(&thrd->donation, struct thread, donation)->name, holder->name);
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    //printf("(%s~%s\n", list_entry(list_front(&holder->donation_list), struct thread, donation)->name,
-                    //list_entry(list_back(&holder->donation_list), struct thread, donation));
-    //for (struct list_elem *e = list_begin(&holder->donation_list);
-       // e != list_end(&holder->donation_list);
-       // e = list_next(e))
-        //printf("%s - ", list_entry(e, struct thread, donation)->name);
-     //   ;
-    //printf("end\n");
-    check_donated(holder);
 }
 
 
@@ -539,24 +481,15 @@ void mlfqs_priority (struct thread *t){
         return;
     }
 
-    int a1 = MIX_DIV(t->recent_cpu, 4);
-    int a2 = MIX_SUB(a1, PRI_MAX);
-    int b1 = FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2));
-
-    t->priority = FP_SUB(a2, b1);
+    t->priority = FP_SUB(FP_SUB(CONVERT_TO_FP(PRI_MAX), FP_DIV(t->recent_cpu, CONVERT_TO_FP(4))), FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2)));
 }
 
 void mlfqs_recent_cpu (struct thread *t){
     if(t == idle_thread){
         return;
     }
-
     int a1 = FP_MUL(CONVERT_TO_FP(2), load_avg);
-    int a2 = MIX_ADD(a1, CONVERT_TO_FP(1));
-    int a3 = FP_DIV(a1, a2);
-    int a4 = FP_MUL(a3, t->recent_cpu);
-
-    t->recent_cpu = MIX_ADD(a4, t->nice);
+    t->recent_cpu = FP_ADD(FP_MUL(FP_DIV(a1, FP_ADD(a1, CONVERT_TO_FP(1))), t->recent_cpu), CONVERT_TO_FP(t->nice));
 }
 
 void mlfqs_load_avg (void){
@@ -565,12 +498,7 @@ void mlfqs_load_avg (void){
         ready_threads--;
     }
     ready_threads++;
-    int a1 = FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60));
-    int a2 = FP_MUL(a1, load_avg);
-    int b1 = FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60));
-    int b2 = FP_MUL(b1, CONVERT_TO_FP(ready_threads));
-
-    load_avg = FP_ADD(a2, b2);
+    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(ready_threads)));
 }
 
 void mlfqs_increment (void){
