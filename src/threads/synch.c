@@ -108,8 +108,6 @@ void sema_up(struct semaphore *sema)
 
     ASSERT(sema != NULL);
 
-    // printf("%d", list_size(&sema->waiters));
-
     old_level = intr_disable();
     if (!list_empty(&sema->waiters))
     {
@@ -258,8 +256,6 @@ void lock_release(struct lock *lock)
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
     thread_current()->priority = thread_current()->origin_priority;
-    
-    //printf("release ");
 
     remove_lock(lock);
     lock->holder->priority = lock->holder->origin_priority;
@@ -300,26 +296,20 @@ void reset_priority(struct thread *Thread, int *pr)
     old_level = intr_disable();
 
     struct list_elem *e;
-
-    // printf("\n%s %d || %d, %d\n", Thread->name, list_size(&(Thread->donation_list)), Thread->priority, *pr);
     
     if(*pr <= Thread->priority){
-        // printf("in if\n");
         *pr = Thread->priority;
     } else{
-        //printf("return\n");
         return;
     }
 
     if(list_size(&(Thread->donation_list)) == 1){
         e = list_begin(&(Thread->donation_list));
-        //printf("\nin for\n");
         struct thread *thrd = list_entry(e, struct thread, donation);
         reset_priority(thrd, pr);
     }
     
     for(e = list_begin(&(Thread->donation_list)); e != list_end(&(Thread->donation_list)); e = list_next(e)){
-        //printf("\nin for\n");
         struct thread *thrd = list_entry(e, struct thread, donation);
         reset_priority(thrd, pr);
     }

@@ -94,7 +94,7 @@ void thread_init(void)
     lock_init(&tid_lock);
     list_init(&ready_list);
     list_init(&all_list);
-    list_init(&sleeping_list); //sleeping list도 초기화 해준다.
+    list_init(&sleeping_list);
 
     /* Set up a thread structure for the running thread. */
     initial_thread = running_thread();
@@ -248,7 +248,6 @@ tid_t thread_create(const char *name, int priority,
     {
         thread_yield();
     }
-
     return tid;
 }
 
@@ -359,7 +358,7 @@ void thread_yield(void)
 
 
 void test_yield(void)
-{
+{    
     struct thread *cur = thread_current();
 
     if (list_empty(&ready_list))
@@ -372,7 +371,6 @@ void test_yield(void)
     {
         thread_yield();
     }
-
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -394,7 +392,6 @@ void thread_foreach(thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-    //printf("thread_set_priority function\n");
     thread_current()->priority = new_priority;
     thread_current()->origin_priority = new_priority;
 
@@ -422,67 +419,6 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
         return true;
     return false;
 }
-
-void test_donate_priority(struct thread *thrd, struct lock *lock)
-{
-    struct thread *holder = lock->holder;
-    //printf("call\n");
-
-    //holder is null
-    if (!lock)
-        return;
-
-    //no donation
-    if (holder->priority >= thrd->priority)
-    {
-        wait_lock(thrd, lock);
-        //printf("no donation\n");
-        return;
-    }
-
-
-    //donation
-    holder->priority = thrd->priority;
-    wait_lock(thrd, lock);
-    //printf("donation\n");
-
-    //recursion part
-    test_donate_priority(holder, holder->waiting_lock);
-}
-
-void wait_lock(struct thread *thrd, struct lock *lock)
-{
-    thrd->waiting_lock = lock;
-    list_insert_ordered(&lock->holder->donation_list, &thrd->donation, less_priority, 0);
-}
-
-void check_donated(struct thread *thrd)
-{
-    //printf("check_donated\n");
-    struct lock *lock = thrd->waiting_lock;
-    if (!lock)
-    {
-        return;
-    }
-    struct thread *holder = lock->holder;
-    holder->priority = thrd->priority;
-        //printf("%s(): ", holder->name);
-
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    list_insert_ordered(&holder->donation_list, &thrd->donation, less_priority, 0);
-    //printf("insert %s to %s\n", list_entry(&thrd->donation, struct thread, donation)->name, holder->name);
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    //printf("(%s~%s\n", list_entry(list_front(&holder->donation_list), struct thread, donation)->name,
-                    //list_entry(list_back(&holder->donation_list), struct thread, donation));
-    //for (struct list_elem *e = list_begin(&holder->donation_list);
-       // e != list_end(&holder->donation_list);
-       // e = list_next(e))
-        //printf("%s - ", list_entry(e, struct thread, donation)->name);
-     //   ;
-    //printf("end\n");
-    check_donated(holder);
-}
-
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)

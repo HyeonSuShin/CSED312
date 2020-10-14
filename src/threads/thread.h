@@ -151,9 +151,6 @@ void thread_foreach(thread_action_func *, void *);
 int thread_get_priority(void);
 void thread_set_priority(int);
 bool less_priority(struct list_elem *, struct list_elem *, void *);
-void test_donate_priority(struct thread *, struct lock *);
-void wait_lock(struct thread *, struct lock *);
-void check_donated(struct thread *);
 
 int thread_get_nice(void);
 void thread_set_nice(int);
