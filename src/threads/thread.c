@@ -180,7 +180,7 @@ void thread_awake(int64_t current_ticks){
             if(sleepingThread->wake_up_ticks <= current_ticks){
                 struct thread *thread = sleepingThread->sleep_thread;
                 e = list_remove(e);
-                palloc_free_page(sleepingThread);
+                // palloc_free_page(sleepingThread);
                 thread_unblock(thread);
             } else{
                 break;
@@ -246,6 +246,13 @@ tid_t thread_create(const char *name, int priority,
     sf = alloc_frame(t, sizeof *sf);
     sf->eip = switch_entry;
     sf->ebp = 0;
+
+    if(thread_mlfqs){
+        mlfqs_recent_cpu(t);
+        mlfqs_priority(t);
+        mlfqs_recent_cpu(thread_current());
+        mlfqs_priority(thread_current());
+    }
 
     /* Add to run queue. */
     thread_unblock(t);
@@ -481,15 +488,24 @@ void mlfqs_priority (struct thread *t){
         return;
     }
 
-    t->priority = FP_SUB(FP_SUB(CONVERT_TO_FP(PRI_MAX), FP_DIV(t->recent_cpu, CONVERT_TO_FP(4))), FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2)));
+    int a1 = MIX_DIV(t->recent_cpu, 4);
+    int a2 = MIX_SUB(a1, PRI_MAX);
+    int b1 = FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2));
+
+    t->priority = FP_SUB(a2, b1);
 }
 
 void mlfqs_recent_cpu (struct thread *t){
     if(t == idle_thread){
         return;
     }
+
     int a1 = FP_MUL(CONVERT_TO_FP(2), load_avg);
-    t->recent_cpu = FP_ADD(FP_MUL(FP_DIV(a1, FP_ADD(a1, CONVERT_TO_FP(1))), t->recent_cpu), CONVERT_TO_FP(t->nice));
+    int a2 = MIX_ADD(a1, CONVERT_TO_FP(1));
+    int a3 = FP_DIV(a1, a2);
+    int a4 = FP_MUL(a3, t->recent_cpu);
+
+    t->recent_cpu = MIX_ADD(a4, t->nice);
 }
 
 void mlfqs_load_avg (void){
@@ -498,7 +514,12 @@ void mlfqs_load_avg (void){
         ready_threads--;
     }
     ready_threads++;
-    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(ready_threads)));
+    int a1 = FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60));
+    int a2 = FP_MUL(a1, load_avg);
+    int b1 = FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60));
+    int b2 = FP_MUL(b1, CONVERT_TO_FP(ready_threads));
+
+    load_avg = FP_ADD(a2, b2);
 }
 
 void mlfqs_increment (void){

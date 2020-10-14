@@ -221,6 +221,8 @@ void donate_priority(struct thread *thrd)
     enum intr_level old_level;
     old_level = intr_disable();
 
+    ASSERT(!thread_mlfqs);
+
     while(thrd->waiting_lock != NULL){
         reset_priority(thrd->waiting_lock->holder, &(thrd->waiting_lock->holder->priority));
         thrd = thrd->waiting_lock->holder;
@@ -278,6 +280,8 @@ void lock_release(struct lock *lock)
 
 void remove_lock(struct lock* lock)
 {
+    ASSERT(!thread_mlfqs);
+
     struct list_elem *e;
     struct list *list = &thread_current()->donation_list;
 
@@ -298,6 +302,8 @@ void reset_priority(struct thread *Thread, int *pr)
 {
     enum intr_level old_level;
     old_level = intr_disable();
+
+    ASSERT(!thread_mlfqs);
 
     struct list_elem *e;
 
