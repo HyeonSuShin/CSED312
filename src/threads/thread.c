@@ -108,6 +108,7 @@ void thread_init(void)
     init_thread(initial_thread, "main", PRI_DEFAULT);
     initial_thread->status = THREAD_RUNNING;
     initial_thread->tid = allocate_tid();
+    load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -165,7 +166,12 @@ void thread_sleep(int64_t ticks){
     sleepingThread->wake_up_ticks = ticks;
     sleepingThread->sleep_thread = current_thread;
 
+    printf("sleep name before block %s : %ld, %d\n", sleepingThread->sleep_thread->name, ticks, sleepingThread->sleep_thread->priority); //
+
     list_insert_ordered(&sleeping_list, &sleepingThread->elem, SLEEPING_LESS_FUNC, NULL);
+    
+    struct sleeping_thread *sleepingthread = list_entry(list_begin(&sleeping_list), struct sleeping_thread, elem); //
+    printf("nearest wake up %s, %ld, %d\n", sleepingthread->sleep_thread->name, sleepingthread->wake_up_ticks, sleepingthread->sleep_thread->priority); //
     thread_block();
 
     intr_set_level(old_level);
@@ -178,9 +184,11 @@ void thread_awake(int64_t current_ticks){
 
             if(sleepingThread->wake_up_ticks <= current_ticks){
                 struct thread *thread = sleepingThread->sleep_thread;
+                printf("awake name %s : %d : %ld\n", sleepingThread->sleep_thread->name, sleepingThread->sleep_thread->priority, sleepingThread->wake_up_ticks); //
                 e = list_remove(e);
-                palloc_free_page(sleepingThread);
                 thread_unblock(thread);
+                printf("First Ready list %s, %d\n", list_entry(list_begin(&ready_list), struct thread, elem)->name, list_entry(list_begin(&ready_list), struct thread, elem)->priority); //
+                // palloc_free_page(sleepingThread);
             } else{
                 break;
             }
@@ -290,6 +298,7 @@ void thread_unblock(struct thread *t)
 
     old_level = intr_disable();
     ASSERT(t->status == THREAD_BLOCKED);
+    list_sort(&ready_list, less_priority, 0);
     list_insert_ordered(&ready_list, &t->elem, less_priority, 0);
     t->status = THREAD_READY;
     intr_set_level(old_level);
@@ -431,73 +440,16 @@ bool less_priority(struct list_elem *elem1, struct list_elem *elem2
     return false;
 }
 
-void test_donate_priority(struct thread *thrd, struct lock *lock)
-{
-    struct thread *holder = lock->holder;
-    //printf("call\n");
-
-    //holder is null
-    if (!lock)
-        return;
-
-    //no donation
-    if (holder->priority >= thrd->priority)
-    {
-        wait_lock(thrd, lock);
-        //printf("no donation\n");
-        return;
-    }
-
-
-    //donation
-    holder->priority = thrd->priority;
-    wait_lock(thrd, lock);
-    //printf("donation\n");
-
-    //recursion part
-    test_donate_priority(holder, holder->waiting_lock);
-}
-
-void wait_lock(struct thread *thrd, struct lock *lock)
-{
-    thrd->waiting_lock = lock;
-    list_insert_ordered(&lock->holder->donation_list, &thrd->donation, less_priority, 0);
-}
-
-void check_donated(struct thread *thrd)
-{
-    //printf("check_donated\n");
-    struct lock *lock = thrd->waiting_lock;
-    if (!lock)
-    {
-        return;
-    }
-    struct thread *holder = lock->holder;
-    holder->priority = thrd->priority;
-        //printf("%s(): ", holder->name);
-
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    list_insert_ordered(&holder->donation_list, &thrd->donation, less_priority, 0);
-    //printf("insert %s to %s\n", list_entry(&thrd->donation, struct thread, donation)->name, holder->name);
-    //printf("%s(%d): ", holder->name, list_size(&holder->donation_list));
-    //printf("(%s~%s\n", list_entry(list_front(&holder->donation_list), struct thread, donation)->name,
-                    //list_entry(list_back(&holder->donation_list), struct thread, donation));
-    //for (struct list_elem *e = list_begin(&holder->donation_list);
-       // e != list_end(&holder->donation_list);
-       // e = list_next(e))
-        //printf("%s - ", list_entry(e, struct thread, donation)->name);
-     //   ;
-    //printf("end\n");
-    check_donated(holder);
-}
-
-
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice)
 {
     enum intr_level old_level;
     old_level = intr_disable();
     thread_current()->nice = nice;
+    mlfqs_recalc();
+    if(!list_empty(&ready_list)){    
+        list_sort(&ready_list, less_priority, 0);
+    }
     intr_set_level(old_level);
 }
 
@@ -531,19 +483,34 @@ int thread_get_recent_cpu(void)
     return ret;
 }
 
-void mlfqs_priority (struct thread *t){
+void mlfqs_priority (struct thread *t, void *aux UNUSED){
     if(t == idle_thread){
         return;
     }
 
-    t->priority = FP_SUB(FP_SUB(CONVERT_TO_FP(PRI_MAX), FP_DIV(t->recent_cpu, CONVERT_TO_FP(4))), FP_MUL(CONVERT_TO_FP(t->nice), CONVERT_TO_FP(2)));
+    int a1 = MIX_DIV(t->recent_cpu, 4);
+    int a2 = FP_SUB(CONVERT_TO_FP(PRI_MAX), a1);
+    int b1 = MIX_MUL(CONVERT_TO_FP(t->nice), 2);
+
+    t->priority = CONVERT_TO_INT_NEAR(FP_SUB(a2, b1));
+    if(t->priority < PRI_MIN){
+        t->priority = PRI_MIN;
+    } else if(t->priority > PRI_MAX){
+        t->priority = PRI_MAX;
+    }
 }
 
 void mlfqs_recent_cpu (struct thread *t){
     if(t == idle_thread){
         return;
     }
-    t->recent_cpu = FP_ADD(FP_MUL(FP_DIV(FP_MUL(CONVERT_TO_FP(2), load_avg), FP_ADD(FP_MUL(CONVERT_TO_FP(2), load_avg), CONVERT_TO_FP(1))), t->recent_cpu), CONVERT_TO_FP(t->nice));
+
+    int a1 = FP_MUL(CONVERT_TO_FP(2), load_avg);
+    int a2 = MIX_ADD(a1, 1);
+    int a3 = FP_DIV(a1, a2);
+    int a4 = FP_MUL(a3, t->recent_cpu);
+
+    t->recent_cpu = MIX_ADD(a4, t->nice);
 }
 
 void mlfqs_load_avg (void){
@@ -552,7 +519,12 @@ void mlfqs_load_avg (void){
         ready_threads--;
     }
     ready_threads++;
-    load_avg = FP_ADD(FP_MUL(FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60)), load_avg), FP_MUL(FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60)), CONVERT_TO_FP(ready_threads)));
+    int a1 = FP_DIV(CONVERT_TO_FP(59), CONVERT_TO_FP(60));
+    int a2 = FP_MUL(a1, load_avg);
+    int b1 = FP_DIV(CONVERT_TO_FP(1), CONVERT_TO_FP(60));
+    int b2 = FP_MUL(b1, CONVERT_TO_FP(ready_threads));
+
+    load_avg = FP_ADD(a2, b2);
 }
 
 void mlfqs_increment (void){
@@ -567,7 +539,7 @@ void mlfqs_recalc (void){
     for(struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
         struct thread *t = list_entry(e, struct thread, allelem);
         mlfqs_recent_cpu(t);
-        mlfqs_priority(t);
+        mlfqs_priority(t, 0);
     }
 }
 
