@@ -27,11 +27,11 @@ struct lock
 
 void lock_init(struct lock *);
 void lock_acquire(struct lock *);
-void donate_priority(struct lock *);
+void donate_priority(struct thread *);
 bool lock_try_acquire(struct lock *);
 void lock_release(struct lock *);
 void remove_lock(struct lock*);
-void reset_priority(struct lock*);
+void reset_priority(struct thread *Thread, int *pr);
 bool lock_held_by_current_thread(const struct lock *);
 
 /* Condition variable. */
@@ -46,7 +46,6 @@ void cond_signal(struct condition *, struct lock *);
 void cond_broadcast(struct condition *, struct lock *);
 
 /* Optimization barrier.
-
    The compiler will not reorder operations across an
    optimization barrier.  See "Optimization Barriers" in the
    reference guide for more information.*/

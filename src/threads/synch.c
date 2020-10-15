@@ -117,7 +117,7 @@ void sema_up(struct semaphore *sema)
     }
     sema->value++;
     
-    test_yield();
+    thread_yield();
     intr_set_level(old_level);
 }
 
@@ -193,41 +193,38 @@ void lock_acquire(struct lock *lock)
     enum intr_level old_level;
 
     struct thread *cur = thread_current();
-
     ASSERT(lock != NULL);
     ASSERT(!intr_context());
     ASSERT(!lock_held_by_current_thread(lock));
 
     old_level = intr_disable();
-    //if (lock_try_acquire(lock))
-    //{   
-      //  intr_set_level(old_level);
-        //return;
-    //}
 
     if (lock->holder)
     {
-        //test_donate_priority(thread_current(), lock);
-        donate_priority(lock);
         cur->waiting_lock = lock;
-        list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
-    }
+        if(!thread_mlfqs){
+            list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
+            donate_priority(cur);
+        }
+    };
+
     sema_down(&lock->semaphore);
     lock->holder = thread_current();
-    thread_current()->waiting_lock = NULL;
 
     intr_set_level(old_level);
 }
 
-void donate_priority(struct lock *lock)
+void donate_priority(struct thread *thrd)
 {
-    //printf("<donation>\n");
-    struct thread *cur = thread_current();
+    enum intr_level old_level;
+    old_level = intr_disable();
 
-    if (lock->holder->priority < cur->priority)
-        lock->holder->priority = cur->priority;
-
-    //check_donated(lock->holder);
+    while(thrd->waiting_lock != NULL){
+        reset_priority(thrd->waiting_lock->holder, &(thrd->waiting_lock->holder->priority));
+        thrd = thrd->waiting_lock->holder;
+    }
+    
+    intr_set_level(old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -256,59 +253,79 @@ bool lock_try_acquire(struct lock *lock)
    handler. */
 void lock_release(struct lock *lock)
 {
+    enum intr_level old_level;
+    old_level = intr_disable();
+
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
-    remove_lock(lock);
-    reset_priority(lock);
+
+    if(!thread_mlfqs){
+        remove_lock(lock);
+        lock->holder->priority = lock->holder->origin_priority;
+        reset_priority(lock->holder, &(lock->holder->priority));
+    }
     lock->holder = NULL;
+
     sema_up(&lock->semaphore);
+
+
+    intr_set_level(old_level);
 }
 
 
 void remove_lock(struct lock* lock)
 {
+    ASSERT(!thread_mlfqs);
+
     struct list_elem *e;
     struct list *list = &thread_current()->donation_list;
 
-    for (e = list_begin(list);
-         e != list_end(list);
-         e = list_next(e))
+    for (e = list_begin(list); e != list_end(list); )
     {
         struct thread *thrd = list_entry(e, struct thread, donation);
         if (lock == thrd->waiting_lock)
         {
-            struct list_elem *tmp = list_prev(e);
-            list_remove(e);
-            e = tmp;
+            e = list_remove(e);
+            continue;
         }
+        e = list_next(e);
     }
 }
 
 
-void reset_priority(struct lock* lock)
+void reset_priority(struct thread *Thread, int *pr)
 {
-    struct list_elem *max_priority_thread_elem;
-    struct thread *max_priority_thread;
-    struct thread *holder = lock->holder;
-    //printf("cur: %s\n", thread_current()->name);
-    //if (list_empty(&thread_current()->donation_list))
-      //  return;
-    //printf("holder(%d): %s\n", list_size(&lock->holder->donation_list), lock->holder->name);
-    //printf("%s.\n", list_entry(list_front(&lock->holder->donation_list), struct thread, donation)->name);
-    if (!list_empty(&holder->donation_list))
-    {
-        //printf("reset_priority not empty list\n");
-        max_priority_thread_elem = list_max(&holder->donation_list, less_priority, 0);
-        max_priority_thread = list_entry(max_priority_thread_elem, struct thread, donation);
-        list_remove(max_priority_thread_elem);
-        holder->priority = max_priority_thread->priority;
-    }
-    else
-    {
-        holder->priority = holder->origin_priority;
+    enum intr_level old_level;
+    old_level = intr_disable();
+
+    ASSERT(!thread_mlfqs);
+
+    struct list_elem *e;
+
+    // printf("\n%s %d || %d, %d\n", Thread->name, list_size(&(Thread->donation_list)), Thread->priority, *pr);
+    
+    if(*pr <= Thread->priority){
+        // printf("in if\n");
+        *pr = Thread->priority;
+    } else{
+        //printf("return\n");
+        return;
     }
 
+    if(list_size(&(Thread->donation_list)) == 1){
+        e = list_begin(&(Thread->donation_list));
+        //printf("\nin for\n");
+        struct thread *thrd = list_entry(e, struct thread, donation);
+        reset_priority(thrd, pr);
+    }
+    
+    for(e = list_begin(&(Thread->donation_list)); e != list_end(&(Thread->donation_list)); e = list_next(e)){
+        //printf("\nin for\n");
+        struct thread *thrd = list_entry(e, struct thread, donation);
+        reset_priority(thrd, pr);
+    }
+    intr_set_level(old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
