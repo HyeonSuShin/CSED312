@@ -418,7 +418,7 @@ void thread_set_priority(int new_priority)
     struct list_elem *highest_in_readylist = list_begin(&ready_list);
     struct thread *thrd = list_entry(highest_in_readylist, struct thread, elem);
     reset_priority(thread_current(), &thread_current()->priority);
-    donate_priority(thread_current());
+    donate_priority();
     if (new_priority < thrd->priority)
         thread_yield();
 }

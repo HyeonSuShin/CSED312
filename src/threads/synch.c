@@ -204,7 +204,7 @@ void lock_acquire(struct lock *lock)
         cur->waiting_lock = lock;
         if(!thread_mlfqs){
             list_insert_ordered(&lock->holder->donation_list, &cur->donation, less_priority, 0);
-            donate_priority(cur);
+            donate_priority();
         }
     };
 
@@ -214,14 +214,15 @@ void lock_acquire(struct lock *lock)
     intr_set_level(old_level);
 }
 
-void donate_priority(struct thread *thrd)
+void donate_priority()
 {
     enum intr_level old_level;
     old_level = intr_disable();
+    struct thread *current = thread_current();
 
-    while(thrd->waiting_lock != NULL){
-        reset_priority(thrd->waiting_lock->holder, &(thrd->waiting_lock->holder->priority));
-        thrd = thrd->waiting_lock->holder;
+    while(current->waiting_lock != NULL){
+        reset_priority(current->waiting_lock->holder, &(current->waiting_lock->holder->priority));
+        current = current->waiting_lock->holder;
     }
     
     intr_set_level(old_level);
@@ -298,33 +299,22 @@ void reset_priority(struct thread *Thread, int *pr)
 {
     enum intr_level old_level;
     old_level = intr_disable();
+    struct thread *donator = Thread;
+    struct list donator_list;
+    list_init(&donator_list);
 
     ASSERT(!thread_mlfqs);
 
-    struct list_elem *e;
-
-    // printf("\n%s %d || %d, %d\n", Thread->name, list_size(&(Thread->donation_list)), Thread->priority, *pr);
-    
-    if(*pr <= Thread->priority){
-        // printf("in if\n");
-        *pr = Thread->priority;
-    } else{
-        //printf("return\n");
-        return;
+    while(!list_empty(&donator->donation_list)){
+        list_sort(&donator->donation_list, less_priority, 0);
+        donator = list_entry(list_front(&donator->donation_list), struct thread, donation);
+        if(*pr <= donator->priority){
+            *pr = donator->priority;
+        } else{
+            break;
+        }
     }
 
-    if(list_size(&(Thread->donation_list)) == 1){
-        e = list_begin(&(Thread->donation_list));
-        //printf("\nin for\n");
-        struct thread *thrd = list_entry(e, struct thread, donation);
-        reset_priority(thrd, pr);
-    }
-    
-    for(e = list_begin(&(Thread->donation_list)); e != list_end(&(Thread->donation_list)); e = list_next(e)){
-        //printf("\nin for\n");
-        struct thread *thrd = list_entry(e, struct thread, donation);
-        reset_priority(thrd, pr);
-    }
     intr_set_level(old_level);
 }
 
